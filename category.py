@@ -3,9 +3,7 @@
 """Generate Wikipedia Category to All Link Page Dictionary.
 """
 import pickle
-import json
 import codecs
-import copy
 from collections import defaultdict
 import gzip
 import os
@@ -125,17 +123,118 @@ def topological_sort_dfs(categorygraph):
     return L
 
 
-def update_categorylinks_without_scc(categorypages, categorygraph):
-    """Update categorypages for containing all reachable content.
+def decompose_scc(categorygraph):
+    """Return strongly connected components (Tarjan's algorithm).
+
+    Args:
+        categorygraph (Hash[String, Set[String]]): category to category list dictionary.
+
+    Return:
+        L (List[Set[String]]): strongly connected components list.
+    """
+    class Node(object):
+        def __init__(self):
+            self.index = None
+            self.lowlink = None
+            self.onStack = False
+
+    i = 0
+    L = []
+    S = []
+    V = defaultdict(Node)
+
+    def strong_connect(v: str):
+        nonlocal i
+        nonlocal V
+        nonlocal S
+        nonlocal L
+
+        V[v].index = i
+        V[v].lowlink = i
+        i += 1
+        S.append(v)
+        V[v].onStack = True
+
+        if v in categorygraph:
+            for w in categorygraph[v]:
+                if V[w].index is None:
+                    strong_connect(w)
+                    V[v].lowlink = min(V[v].lowlink, V[w].lowlink)
+                elif V[w].onStack:
+                    V[v].lowlink = min(V[v].lowlink, V[w].index)
+
+        if V[v].lowlink == V[v].index:
+            new_c = set()
+            w = S.pop()
+            V[w].onStack = False
+            new_c.add(w)
+            while v != w:
+                w = S.pop()
+                V[w].onStack = False
+                new_c.add(w)
+            L.append(new_c)
+
+    nodes = set()
+    for v in categorygraph.values():
+        nodes |= set(v)
+    nodes |= set(categorygraph.keys())
+
+    for v in nodes:
+        if V[v].index is None:
+            strong_connect(v)
+
+    return L
+
+
+def _update_categorygraph(categorypages, categorygraph, category2indices):
+    """Update categorygraph for containing all reachable content.
+
+    Args:
+        categorypages (Hash[String, Set[String]]): category to page name list dictionary.
+        categorygraph (Hash[String, Set[String]]): category to category list dictionary.
+        category2indices (Hash[String, Int]): category to category index list dictionary.
+
+    Return:
+        categorygraph (Hash[Int, Set[Int]]): updated categorygraph for containing all reachable content.
+        categorypages (Hash[Int, Set[String]]): category index to page name list dictionary.
+    """
+    updated_categorygraph = defaultdict(set)
+    inversed_categorygraph = defaultdict(set)
+
+    for c in categorygraph:
+        for v in categorygraph[c]:
+            updated_categorygraph[category2indices[c]].add(category2indices[v])
+            inversed_categorygraph[category2indices[v]].add(category2indices[c])
+        # Remove self loop
+        updated_categorygraph[category2indices[c]] -= set([category2indices[c]])
+        inversed_categorygraph[category2indices[c]] -= set([category2indices[c]])
+    sorted_list = topological_sort_dfs(updated_categorygraph)
+
+    for n in reversed(sorted_list):
+        if n in inversed_categorygraph:
+            for v in inversed_categorygraph[n]:
+                updated_categorygraph[v] |= updated_categorygraph[n]
+
+    updated_categorypages = defaultdict(set)
+    for node, i in category2indices.items():
+        if node in categorypages:
+            updated_categorypages[i] |= set(categorypages[node])
+
+    return updated_categorygraph, updated_categorypages
+
+
+def update_categorygraph_without_scc(categorypages, categorygraph):
+    """Update categorygraph for containing all reachable content without scc.
 
     Args:
         categorypages (Hash[String, Set[String]]): category to page name list dictionary.
         categorygraph (Hash[String, Set[String]]): category to category list dictionary.
 
     Return:
-        categorypages (Hash[Int, Set[String]]): updated categorypages for containing all reachable content.
+        categorypages (Hash[Int, Set[Int]]): updated categorygraph for containing all reachable content.
+        categorypages (Hash[Int, Set[String]]): category index to page name list dictionary.
+        category2indices (Hash[String, Int]): category to category index list dictionary.
     """
-    sorted_list = topological_sort_dfs(categorygraph)
 
     categories = set()
     for k in categorygraph:
@@ -144,21 +243,27 @@ def update_categorylinks_without_scc(categorypages, categorygraph):
     categories = list(categories)
     category2indices = {c: i for i, c in enumerate(categories)}
 
-    inversed_categorygraph = defaultdict(set)
-    for k, v in categorygraph.items():
-        for category in v:
-            inversed_categorygraph[category].add(k)
+    updated_categorygraph, updated_categorypages = _update_categorygraph(categorypages, categorygraph, category2indices)
+    return updated_categorygraph, updated_categorypages, category2indices
 
-    updated_categorypages = defaultdict(set)
-    for node, i in category2indices.items():
-        if node in categorypages:
-            updated_categorypages[i] |= set(categorypages[node])
-    for node in reversed(sorted_list):
-        if node in inversed_categorygraph:
-            for v in inversed_categorygraph[node]:
-                updated_categorypages[v] |= updated_categorypages[node]
 
-    return updated_categorypages, category2indices
+def update_categorygraph(categorypages, categorygraph):
+    """Update categorygraph for containing all reachable content.
+
+    Args:
+        categorypages (Hash[String, Set[String]]): category to page name list dictionary.
+        categorygraph (Hash[String, Set[String]]): category to category list dictionary.
+
+    Return:
+        categorygraph (Hash[Int, Set[Int]]): updated categorygraph for containing all reachable content.
+        categorypages (Hash[Int, Set[String]]): category index to page name list dictionary.
+        category2indices (Hash[String, Int]): category to category index list dictionary.
+    """
+    scc_list = decompose_scc(categorygraph)
+    category2indices = {c: i for i, scc in enumerate(scc_list) for c in scc}
+
+    updated_categorygraph, updated_categorypages = _update_categorygraph(categorypages, categorygraph, category2indices)
+    return updated_categorygraph, updated_categorypages, category2indices
 
 
 def show_category_directlinks(categorypages, categorygraph, category):
@@ -173,6 +278,31 @@ def show_category_directlinks(categorypages, categorygraph, category):
         print("Sub Categories:", categorygraph[category])
     if category in categorypages:
         print("Pages:", categorypages[category])
+
+
+def show_category_alllinks(categorypages, categorygraph, category2indices, category):
+    """Print all link pages and sub categories under the category.
+
+    Args:
+        categorypages (Hash[Int, Set[String]]): category index to page titles dictionary.
+        categorygraph (Hash[Int, Set[Int]]): category index to sub categories dictionary.
+        category2indices (Hash[String, Int]): category to category index list dictionary.
+        category (String): target category name.
+    """
+    index2categories = defaultdict(set)
+    for c, i in category2indices.items():
+        index2categories[i].add(c)
+
+    if category in category2indices:
+        index = category2indices[category]
+        categories = []
+        pages = set() | categorypages[index]
+        for sub_c in categorygraph[index]:
+            categories.append(sub_c)
+            pages |= categorypages[sub_c]
+        categories = set().union(*[index2categories[i] for i in categories])
+        print("Sub Categories:", categories)
+        print("Pages:", pages)
 
 
 def write(obj, path):
@@ -190,11 +320,12 @@ def load(path):
 
 
 if __name__ == '__main__':
-    # download()
-    # id2title = extract_id_title(path='jawiki-latest-page.sql.gz')
-    # categorypages, categorygraph = extract_categorylinks(id2title, path='jawiki-latest-categorylinks.sql.gz')
-    # write(categorypages, path='categorypages.pkl')
-    # write(categorygraph, path='categorygraph.pkl')
-    categorypages = load(path='categorypages.pkl')
-    categorygraph = load(path='categorygraph.pkl')
-    update_categorylinks_without_scc(categorypages, categorygraph)
+    download()
+    id2title = extract_id_title(path='jawiki-latest-page.sql.gz')
+    categorypages, categorygraph = extract_categorylinks(id2title, path='jawiki-latest-categorylinks.sql.gz')
+    write(categorypages, path='categorypages.pkl')
+    write(categorygraph, path='categorygraph.pkl')
+    categorygraph, categorypages, category2indices = update_categorygraph(categorypages, categorygraph)
+    write(categorygraph, path='categorygraph_all.pkl')
+    write(categorypages, path='categorypages_all.pkl')
+    write(category2indices, path='category2indices.pkl')
