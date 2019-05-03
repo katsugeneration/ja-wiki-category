@@ -34,10 +34,10 @@ def extract_id_title(path):
     """Extract id and title to Wikipedia pages dump.
 
     Args:
-        path (str): page dump data path.
+        path (String): page dump data path.
 
     Retunr:
-        id2title (Hash[String, String]): page ID to page title dictionary.
+        id2title (Hash[String, String]): page id to page title dictionary.
     """
     with gzip.GzipFile(path) as f:
         id2title = dict(re_parentheses.findall(f.read().decode('utf8')))
@@ -45,11 +45,23 @@ def extract_id_title(path):
 
 
 def _decode_error_handler(err):
+    """Decode function error handler for printing error content.
+    """
     print("Decode Error:", str(err.start), '-', str(err.end), err.object[err.start:err.end])
     return ('', err.end)
 
 
 def extract_categorylinks(id2title, path):
+    """Extract category under pages and subcategories to categorylinks dump.
+
+    Args:
+        id2title (Hash[String, String]): page id to page title dictionary.
+        path (String): categorylinks dump data path.
+
+    Return:
+        categorypages (Hash[String, Set[String]]): category to page titles dictionary.
+        categorygraph (Hash[String, Set[String]]): category to sub categories dictionary.
+    """
     codecs.register_error('original', _decode_error_handler)
     categorypages = defaultdict(set)
     categorygraph = defaultdict(set)
@@ -70,6 +82,13 @@ def extract_categorylinks(id2title, path):
 
 
 def show_category_directlinks(categorypages, categorygraph, category):
+    """Print direct link pages and sub categories under the category.
+
+    Args:
+        categorypages (Hash[String, Set[String]]): category to page titles dictionary.
+        categorygraph (Hash[String, Set[String]]): category to sub categories dictionary.
+        category (String): target category name.
+    """
     if category in categorygraph:
         print("Sub Categories:", categorygraph[category])
     if category in categorypages:
