@@ -83,10 +83,10 @@ def topological_sort_dfs(categorygraph):
     """Return topological sorted list (DFS algorithm in  Cormen's book).
 
     Args:
-        categorygraph (Hash[String, Set[String]]): category to category list dictionary.
+        categorygraph (Hash[T, Set[T]]): category to category list dictionary.
 
     Return:
-        L (List[String]): topological sorted list.
+        L (List[T]): topological sorted list.
     """
     class Node(object):
         def __init__(self):
@@ -96,7 +96,7 @@ def topological_sort_dfs(categorygraph):
     L = []
     V = defaultdict(Node)
 
-    def visit(v: str):
+    def visit(v):
         if V[v].permanent:
             return
         if V[v].temporary:
@@ -127,10 +127,10 @@ def decompose_scc(categorygraph):
     """Return strongly connected components (Tarjan's algorithm).
 
     Args:
-        categorygraph (Hash[String, Set[String]]): category to category list dictionary.
+        categorygraph (Hash[T, Set[T]]): category to category list dictionary.
 
     Return:
-        L (List[Set[String]]): strongly connected components list.
+        L (List[Set[T]]): strongly connected components list.
     """
     class Node(object):
         def __init__(self):
@@ -143,7 +143,7 @@ def decompose_scc(categorygraph):
     S = []
     V = defaultdict(Node)
 
-    def strong_connect(v: str):
+    def strong_connect(v):
         nonlocal i
         nonlocal V
         nonlocal S
@@ -296,11 +296,12 @@ def show_category_alllinks(categorypages, categorygraph, category2indices, categ
     if category in category2indices:
         index = category2indices[category]
         categories = []
-        pages = set() | categorypages[index]
+        pages = [categorypages[index]]
         for sub_c in categorygraph[index]:
             categories.append(sub_c)
-            pages |= categorypages[sub_c]
+            pages.append(categorypages[sub_c])
         categories = set().union(*[index2categories[i] for i in categories])
+        pages = set().union(*pages)
         print("Sub Categories:", categories)
         print("Pages:", pages)
 
