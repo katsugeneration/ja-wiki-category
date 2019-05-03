@@ -3,7 +3,6 @@
 """Generate Wikipedia Category to All Link Page Dictionary.
 """
 import pickle
-import codecs
 from collections import defaultdict
 import gzip
 import os
@@ -42,13 +41,6 @@ def extract_id_title(path):
     return id2title
 
 
-def _decode_error_handler(err):
-    """Decode function error handler for printing error content.
-    """
-    print("Decode Error:", str(err.start), '-', str(err.end), err.object[err.start:err.end])
-    return ('', err.end)
-
-
 def extract_categorylinks(id2title, path):
     """Extract category under pages and subcategories to categorylinks dump.
 
@@ -60,11 +52,10 @@ def extract_categorylinks(id2title, path):
         categorypages (Hash[String, Set[String]]): category to page titles dictionary.
         categorygraph (Hash[String, Set[String]]): category to sub categories dictionary.
     """
-    codecs.register_error('original', _decode_error_handler)
     categorypages = defaultdict(set)
     categorygraph = defaultdict(set)
     with gzip.GzipFile(path) as f:
-        for (from_id, to, from_name, _, _, _, category_type) in re_categorylinks.findall(f.read().decode('utf8', errors='original')):
+        for (from_id, to, from_name, _, _, _, category_type) in re_categorylinks.findall(f.read().decode('utf8', errors='ignore')):
             if from_id in id2title:
                 _from = id2title[from_id]
 
@@ -278,6 +269,41 @@ def show_category_directlinks(categorypages, categorygraph, category):
         print("Sub Categories:", categorygraph[category])
     if category in categorypages:
         print("Pages:", categorypages[category])
+
+
+def show_category_alllinks_with_dfs(categorypages, categorygraph, category):
+    """Print all link pages and sub categories under the category.
+
+    Args:
+        categorypages (Hash[String, Set[String]]): category to page titles dictionary.
+        categorygraph (Hash[String, Set[String]]): category to sub categories dictionary.
+        category (String): target category name.
+    """
+    class Node(object):
+        def __init__(self):
+            self.visited = False
+
+    V = defaultdict(Node)
+    categories = set()
+    pages = set()
+
+    def visit(v):
+        nonlocal pages
+        nonlocal categories
+
+        if V[v].visited:
+            return
+        V[v].visited = True
+        if v in categorypages:
+            pages |= categorypages[v]
+        if v in categorygraph:
+            categories |= categorygraph[v]
+            for m in categorygraph[v]:
+                visit(m)
+
+    visit(category)
+    print("Sub Categories:", categories)
+    print("Pages:", pages)
 
 
 def show_category_alllinks(categorypages, categorygraph, category2indices, category):
