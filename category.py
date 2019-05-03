@@ -81,6 +81,86 @@ def extract_categorylinks(id2title, path):
     return categorypages, categorygraph
 
 
+def topological_sort_dfs(categorygraph):
+    """Return topological sorted list (DFS algorithm in  Cormen's book).
+
+    Args:
+        categorygraph (Hash[String, Set[String]]): category to category list dictionary.
+
+    Return:
+        L (List[String]): topological sorted list.
+    """
+    class Node(object):
+        def __init__(self):
+            self.temporary = False
+            self.permanent = False
+
+    L = []
+    V = defaultdict(Node)
+
+    def visit(v: str):
+        if V[v].permanent:
+            return
+        if V[v].temporary:
+            raise Exception("Graph has at least one cycle")
+
+        V[v].temporary = True
+        if v in categorygraph:
+            for m in categorygraph[v]:
+                visit(m)
+
+        V[v].temporary = False
+        V[v].permanent = True
+        L.insert(0, v)
+
+    nodes = set()
+    for v in categorygraph.values():
+        nodes |= set(v)
+    nodes |= set(categorygraph.keys())
+
+    while len(nodes) != 0:
+        v = nodes.pop()
+        visit(v)
+
+    return L
+
+
+def update_categorylinks_without_scc(categorypages, categorygraph):
+    """Update categorypages for containing all reachable content.
+
+    Args:
+        categorypages (Hash[String, Set[String]]): category to page name list dictionary.
+        categorygraph (Hash[String, Set[String]]): category to category list dictionary.
+
+    Return:
+        categorypages (Hash[Int, Set[String]]): updated categorypages for containing all reachable content.
+    """
+    sorted_list = topological_sort_dfs(categorygraph)
+
+    categories = set()
+    for k in categorygraph:
+        categories |= categorygraph[k]
+    categories |= set(categorygraph.keys())
+    categories = list(categories)
+    category2indices = {c: i for i, c in enumerate(categories)}
+
+    inversed_categorygraph = defaultdict(set)
+    for k, v in categorygraph.items():
+        for category in v:
+            inversed_categorygraph[category].add(k)
+
+    updated_categorypages = defaultdict(set)
+    for node, i in category2indices.items():
+        if node in categorypages:
+            updated_categorypages[i] |= set(categorypages[node])
+    for node in reversed(sorted_list):
+        if node in inversed_categorygraph:
+            for v in inversed_categorygraph[node]:
+                updated_categorypages[v] |= updated_categorypages[node]
+
+    return updated_categorypages, category2indices
+
+
 def show_category_directlinks(categorypages, categorygraph, category):
     """Print direct link pages and sub categories under the category.
 
@@ -110,8 +190,11 @@ def load(path):
 
 
 if __name__ == '__main__':
-    download()
-    id2title = extract_id_title(path='jawiki-latest-page.sql.gz')
-    categorypages, categorygraph = extract_categorylinks(id2title, path='jawiki-latest-categorylinks.sql.gz')
-    write(categorypages, path='categorypages.pkl')
-    write(categorygraph, path='categorygraph.pkl')
+    # download()
+    # id2title = extract_id_title(path='jawiki-latest-page.sql.gz')
+    # categorypages, categorygraph = extract_categorylinks(id2title, path='jawiki-latest-categorylinks.sql.gz')
+    # write(categorypages, path='categorypages.pkl')
+    # write(categorygraph, path='categorygraph.pkl')
+    categorypages = load(path='categorypages.pkl')
+    categorygraph = load(path='categorygraph.pkl')
+    update_categorylinks_without_scc(categorypages, categorygraph)
